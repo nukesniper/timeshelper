@@ -1,4 +1,4 @@
-[theme]
+# [theme]
 primaryColor = "#4CAF50"
 backgroundColor = "#1E1E1E"
 secondaryBackgroundColor = "#252526"
