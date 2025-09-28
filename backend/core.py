@@ -23,21 +23,47 @@ def _openai_sanity_check(api_key: str) -> None:
     """Fail fast with a readable error if key/project/org is wrong."""
     from openai import OpenAI
 
-    client = OpenAI(
-        api_key=api_key.strip(),
-        organization=(os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None,
-        project=(os.getenv("OPENAI_PROJECT") or "").strip() or None,
-    )
-    try:
-        _ = client.models.list()  # verify credentials + headers
-    except Exception as e:
+    key = (api_key or "").strip()
+    org = (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None
+    proj = (os.getenv("OPENAI_PROJECT") or "").strip() or None
+    base = (os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "").strip() or None
+
+    # Quick validations
+    if key.startswith("sk-proj-") and not proj:
         raise ConfigError(
-            "OpenAI authentication failed. Double-check that:\n"
-            "• OPENAI_API_KEY starts with sk-proj- and belongs to THIS project\n"
-            "• OPENAI_PROJECT is exactly the 'proj_…' of the same project\n"
-            "• (Optional) OPENAI_ORG_ID matches your account’s org, or leave it unset\n"
-            "• No conflicting OPENAI_BASE_URL/OPENAI_API_BASE env vars are set\n"
-            f"Raw error type: {type(e).__name__}. Check Streamlit Cloud logs for details."
+            "You are using a project-scoped key (sk-proj-*) but OPENAI_PROJECT is not set.\n"
+            "Set OPENAI_PROJECT to your exact 'proj_…' ID from the same project as the key."
+        )
+    if base:
+        raise ConfigError(
+            f"Unexpected OPENAI_BASE_URL/OPENAI_API_BASE is set ({base}). "
+            "Unset it unless you intentionally use Azure/Proxy."
+        )
+
+    # Instantiate client with the exact headers we intend to use
+    client = OpenAI(api_key=key, organization=org, project=proj)
+
+    # Try a cheap, auth-required call
+    try:
+        _ = client.models.list()
+    except Exception as e:
+        # Provide the most useful, non-secret hints
+        mask = lambda s: ("*" * (len(s) - 6) + s[-6:]) if s and len(s) > 6 else s
+        used = [
+            f"API key: {mask(key)}",
+            f"Project: {proj or '(unset)'}",
+            f"Org: {org or '(unset)'}",
+            f"Base URL: {base or '(default)'}",
+        ]
+        raise ConfigError(
+            "OpenAI authentication failed.\n"
+            "Checklist:\n"
+            "  • Use a valid key: user key starts 'sk-', project key starts 'sk-proj-'.\n"
+            "  • If using sk-proj-*, set OPENAI_PROJECT to the matching 'proj_…' from the SAME project.\n"
+            "  • Remove OPENAI_BASE_URL/OPENAI_API_BASE unless you use Azure/proxy.\n"
+            "  • If unsure about org, remove OPENAI_ORG_ID so the default is used.\n"
+            f"Used headers/env:\n    - " + "\n    - ".join(used) + "\n"
+            "Check the Streamlit Cloud logs for the precise server error."
         ) from e
 
 

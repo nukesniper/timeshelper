@@ -34,18 +34,17 @@ if OPENAI_ORG_ID:
 else:
     st.sidebar.info("OPENAI_ORG_ID not set (often optional).")
 
-# Optional sanity (masked key)
-def _mask(s: str | None, keep: int = 4) -> str:
-    if not s:
-        return ""
-    return ("*" * max(len(s) - keep, 0)) + s[-keep:]
+def _mask(s, keep=6): 
+    return ("*"*(len(s)-keep))+s[-keep:] if s and len(s) > keep else s or ""
 
 st.sidebar.caption("🔐 OpenAI sanity")
 st.sidebar.write({
     "OPENAI_API_KEY": _mask(os.getenv("OPENAI_API_KEY")),
-    "OPENAI_PROJECT": os.getenv("OPENAI_PROJECT"),
-    "OPENAI_ORG_ID": os.getenv("OPENAI_ORG_ID"),
+    "OPENAI_PROJECT": os.getenv("OPENAI_PROJECT") or "(unset)",
+    "OPENAI_ORG_ID": os.getenv("OPENAI_ORG_ID") or "(unset)",
+    "OPENAI_BASE_URL": os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "(default)",
 })
+
 
 
 # PINECONE (support both flat and [pinecone] section)
