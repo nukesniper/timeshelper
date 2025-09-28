@@ -132,26 +132,27 @@ def run_llm(
     # ---- Fast auth sanity (will raise ConfigError with guidance) ----
     _openai_sanity_check(api_key)
 
-        # ---- Models ----
-    project = (os.getenv("OPENAI_PROJECT") or "").strip() or None
-    org_id = (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None
+# ---- Models ----
+project = (os.getenv("OPENAI_PROJECT") or "").strip() or None
+org_id = (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None
 
-    api_key = api_key.strip()
-    if not api_key.startswith("sk-") or len(api_key) < 20:
-        raise ConfigError("OPENAI_API_KEY looks invalid. Copy it exactly from the dashboard.")
+api_key = api_key.strip()
+if not api_key.startswith("sk-proj-"):
+    raise ConfigError("You’re using a project-scoped flow; OPENAI_API_KEY must start with 'sk-proj-'.")
 
-    # Do the sanity check BEFORE constructing LangChain wrappers
-    _openai_sanity_check(api_key)
+# Do the sanity check BEFORE constructing LangChain wrappers
+_openai_sanity_check(api_key)
 
-    # Build clients; only pass organization if you really set it
-    emb_kwargs = {"model": embedding_model, "api_key": api_key, "project": project}
-    chat_kwargs = {"model": chat_model, "temperature": temperature, "api_key": api_key, "project": project}
-    if org_id:
-        emb_kwargs["organization"] = org_id
-        chat_kwargs["organization"] = org_id
+# Build clients; only pass organization if it's really present
+emb_kwargs = {"model": embedding_model, "api_key": api_key, "project": project}
+chat_kwargs = {"model": chat_model, "temperature": temperature, "api_key": api_key, "project": project}
+if org_id:
+    emb_kwargs["organization"] = org_id
+    chat_kwargs["organization"] = org_id
 
-    embeddings = OpenAIEmbeddings(**emb_kwargs)
-    chat = ChatOpenAI(**chat_kwargs)
+embeddings = OpenAIEmbeddings(**emb_kwargs)
+chat = ChatOpenAI(**chat_kwargs)
+
 
     # ---- Vector store / retriever ----
     if namespace:
