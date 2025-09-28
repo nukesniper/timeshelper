@@ -2,9 +2,18 @@
 from datetime import datetime
 #load_dotenv()
 from typing import Set
-
+import os 
 import streamlit as st
-#from streamlit_chat import message
+
+# Pull from Streamlit Secrets (preferred) or fallback to env (local dev)
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+PINECONE_API_KEY = st.secrets.get("PINECONE_API_KEY") or os.getenv("PINECONE_API_KEY")
+
+# Export as environment variables so any downstream libs pick them up
+if OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+if PINECONE_API_KEY:
+    os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
 
 from backend.core import run_llm
 
@@ -79,7 +88,7 @@ with st.sidebar:
     user_name = "Lucas Fernandez de Losada"
     user_email = "lucas.fernandez-de-losada@psi.ch"
 
-    profile_pic = Image.open("C:\\Users\\lucas\\Downloads\\Profile_Pic_MIT.jpg")
+    profile_pic = Image.open("Profile_Pic_MIT.jpg")
     st.image(profile_pic, width=150)
     st.write(f"**Name:** {user_name}")
     st.write(f"**Email:** {user_email}")
