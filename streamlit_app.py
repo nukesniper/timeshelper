@@ -3,71 +3,55 @@ from typing import Set
 import os
 import streamlit as st
 
-# --- Page config: FIRST Streamlit call ---
-st.set_page_config(
-    page_title="Your App Title",
-    page_icon="🧊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# --- Page config FIRST ---
+st.set_page_config(page_title="Your App Title", page_icon="🧊", layout="wide")
 
-# --- Secrets helper + diagnostics ---
+# --- Secrets helpers ---
 def get_secret(name, env=None, default=None):
-    # Prefer Streamlit Secrets; fallback to env var; finally default
     try:
         if name in st.secrets:
-            val = st.secrets[name]
-            if val is not None:
-                return str(val)
+            v = st.secrets[name]
+            if v is not None:
+                return str(v)
     except Exception:
         pass
     if env and env in os.environ:
         return os.environ[env]
     return default
 
-# Read secrets
+# --- Load keys + export to env ---
 OPENAI_API_KEY = get_secret("OPENAI_API_KEY", env="OPENAI_API_KEY")
-
-# Optional: export to env for libs that expect env vars
 if OPENAI_API_KEY:
     os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
     st.sidebar.success("Secrets loaded. Found: OPENAI_API_KEY")
 else:
-    st.sidebar.error("OPENAI_API_KEY not found in app Secrets or environment.")
-    st.sidebar.info(
-        "On Cloud: ⋯ → Manage app → Settings → Secrets (correct repo/branch), then Save & Restart.\n"
-        "Local: create .streamlit/secrets.toml or set env vars."
-    )
+    st.sidebar.error("OPENAI_API_KEY not found.")
 
-# Pinecone: export both API key and environment/region
 pc = st.secrets.get("pinecone", {})
-if pc:
-    if pc.get("api_key"):
-        os.environ["PINECONE_API_KEY"] = str(pc["api_key"])
-        st.sidebar.success("Secrets loaded. Found: PINECONE_API_KEY")
-    else:
-        st.sidebar.error("Missing [pinecone].api_key in Secrets.")
-
-    # Accept either 'environment' (serverless/classic) or 'region' (sometimes used)
-    env_or_region = pc.get("environment") or pc.get("region")
-    if env_or_region:
-        # normalize to PINECONE_ENVIRONMENT so backend/core.py finds it
-        os.environ["PINECONE_ENVIRONMENT"] = str(env_or_region)
-        st.sidebar.success(f"PINECONE_ENVIRONMENT set: {env_or_region}")
-    else:
-        st.sidebar.error("Missing [pinecone].environment (or region) in Secrets.")
+if pc.get("api_key"):
+    os.environ["PINECONE_API_KEY"] = str(pc["api_key"])
+    st.sidebar.success("Secrets loaded. Found: PINECONE_API_KEY")
 else:
-    st.sidebar.warning("No [pinecone] section in Secrets — RAG will fail.")
+    st.sidebar.error("Missing [pinecone].api_key in Secrets.")
 
-# Optional sanity display
+env_or_region = pc.get("environment") or pc.get("region")
+if env_or_region:
+    os.environ["PINECONE_ENVIRONMENT"] = str(env_or_region)
+    st.sidebar.success(f"PINECONE_ENVIRONMENT set: {env_or_region}")
+else:
+    st.sidebar.error("Missing [pinecone].environment (or region) in Secrets.")
+
+# Optional sanity
 st.sidebar.caption("🔐 Pinecone sanity")
 st.sidebar.write({
     "PINECONE_API_KEY": bool(os.getenv("PINECONE_API_KEY")),
     "PINECONE_ENVIRONMENT": os.getenv("PINECONE_ENVIRONMENT"),
 })
 
-# --- Import anything that might read env vars or call st.* at import time *after* the above ---
-from backend.core import run_llm  # moved down
+# ===== END of setup =====
+# IMPORTANT: this import must be at column 0 (no indentation)
+from backend.core import run_llm
+
 
 # Other imports
 from PIL import Image
