@@ -1,6 +1,5 @@
 import os
 import streamlit as st
-from __future__ import annotations
 
 # ========== PAGE CONFIG (first Streamlit call) ==========
 st.set_page_config(page_title="Your App Title", page_icon="🧊", layout="wide")
