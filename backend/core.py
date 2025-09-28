@@ -18,8 +18,7 @@ from consts import INDEX_NAME
 
 
 def run_llm(query: str, chat_history: List[Dict[str, Any]] = []):
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=api_key)
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, api_key=api_key)
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     # modified to include the possibility of querying over a specific namespace
     docsearch = PineconeVectorStore(index_name=INDEX_NAME, embedding=embeddings) #namespace="ctf")
     chat = ChatOpenAI(verbose=True, temperature=0)

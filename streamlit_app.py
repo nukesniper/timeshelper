@@ -5,25 +5,13 @@ from typing import Set
 import os
 import streamlit as st
 
-def _get_secret(name: str):
-    # 1) Prefer real environment variables (good for local dev/CI)
-    val = os.getenv(name)
-    if val:
-        return val
-    # 2) Fall back to Streamlit secrets (works on Cloud; may not exist locally)
-    try:
-        return st.secrets[name]  # don't use .get(), it still parses and may raise
-    except Exception:
-        return None
+# flat
+openai_key = st.secrets["OPENAI_API_KEY"]
 
-# Pull keys once, then export as env so downstream libs auto-detect them
-OPENAI_API_KEY = _get_secret("OPENAI_API_KEY")
-PINECONE_API_KEY = _get_secret("PINECONE_API_KEY")
+# nested
+pinecone_api_key = st.secrets["pinecone"]["api_key"]
+pinecone_env     = st.secrets["pinecone"]["environment"]
 
-if OPENAI_API_KEY:
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-if PINECONE_API_KEY:
-    os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
 from backend.core import run_llm
 
 st.set_page_config(
