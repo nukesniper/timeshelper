@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+from __future__ import annotations
 
 # ========== PAGE CONFIG (first Streamlit call) ==========
 st.set_page_config(page_title="Your App Title", page_icon="🧊", layout="wide")
@@ -88,15 +89,12 @@ import requests
 from io import BytesIO
 
 
-def create_sources_string(source_urls: Set[str]) -> str:
+def create_sources_string(source_urls: set[str] | None) -> str:
     if not source_urls:
         return ""
-    sources_list = list(source_urls)
-    sources_list.sort()
-    sources_string = "sources:\n"
-    for i, source in enumerate(sources_list):
-        sources_string += f"{i+1}. {source}\n"
-    return sources_string
+    lines = [f"{i}. {src}" for i, src in enumerate(sorted(source_urls), start=1)]
+    return "sources:\n" + "\n".join(lines) + "\n"
+
 
 
 # Add this function to get a profile picture
