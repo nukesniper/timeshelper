@@ -1,14 +1,8 @@
-#from dotenv import load_dotenv
-
-#load_dotenv()
 # backend/core.py
 from __future__ import annotations
 
 import os
 from typing import Any, Dict, List, Optional
-
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 
 from langchain import hub
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -23,6 +17,28 @@ from consts import INDEX_NAME
 class ConfigError(RuntimeError):
     """Config/Env problems raised with a clear message."""
     pass
+
+
+def _openai_sanity_check(api_key: str) -> None:
+    """Fail fast with a readable error if key/project/org is wrong."""
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=api_key.strip(),
+        organization=(os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None,
+        project=(os.getenv("OPENAI_PROJECT") or "").strip() or None,
+    )
+    try:
+        _ = client.models.list()  # verify credentials + headers
+    except Exception as e:
+        raise ConfigError(
+            "OpenAI authentication failed. Double-check that:\n"
+            "• OPENAI_API_KEY starts with sk-proj- and belongs to THIS project\n"
+            "• OPENAI_PROJECT is exactly the 'proj_…' of the same project\n"
+            "• (Optional) OPENAI_ORG_ID matches your account’s org, or leave it unset\n"
+            "• No conflicting OPENAI_BASE_URL/OPENAI_API_BASE env vars are set\n"
+            f"Raw error type: {type(e).__name__}. Check Streamlit Cloud logs for details."
+        ) from e
 
 
 def _require_env(name: str) -> str:
@@ -57,9 +73,8 @@ def run_llm(
     Returns:
       dict(answer=str, sources=list[str], k=int)
     """
-
     # ---- Keys / env setup ----
-    api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+    api_key = (openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip()
     if not api_key:
         raise ConfigError("OPENAI_API_KEY is not set.")
 
@@ -79,20 +94,21 @@ def run_llm(
         )
     os.environ["PINECONE_ENVIRONMENT"] = pc_env  # ensure downstream libs see it
 
-        # ---- Models ----
+    # ---- Fast auth sanity (will raise ConfigError with guidance) ----
+    _openai_sanity_check(api_key)
+
+    # ---- Models ----
     # Read optional Organization / Project for project-scoped keys (sk-proj-*)
     org_id = (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None
     project = (os.getenv("OPENAI_PROJECT") or "").strip() or None
 
-    # Basic sanity on the key to catch empty/whitespace values early
-    api_key = api_key.strip()
+    # Basic sanity on the key format
     if not api_key.startswith("sk-") or len(api_key) < 20:
         raise ConfigError(
             "OPENAI_API_KEY looks invalid. Make sure it starts with 'sk-' "
             "and is copied exactly from the OpenAI dashboard."
         )
 
-    # Build clients, forwarding optional org/project
     embeddings = OpenAIEmbeddings(
         model=embedding_model,
         api_key=api_key,
@@ -107,6 +123,13 @@ def run_llm(
         project=project,
     )
 
+    # ---- Vector store / retriever ----
+    if namespace:
+        vectorstore = PineconeVectorStore(index_name=index_name, embedding=embeddings, namespace=namespace)
+    else:
+        vectorstore = PineconeVectorStore(index_name=index_name, embedding=embeddings)
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
     # ---- Prompts & chains ----
     rephrase_prompt = hub.pull("langchain-ai/chat-langchain-rephrase")
     qa_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
@@ -116,17 +139,14 @@ def run_llm(
     rag_chain = create_retrieval_chain(history_aware, stuff_chain)
 
     # ---- Invoke ----
-    result = rag_chain.invoke(
-        {"input": query, "chat_history": chat_history or []}
-    )
+    result = rag_chain.invoke({"input": query, "chat_history": chat_history or []})
 
     # LangChain may return "answer" or "output_text" depending on versions
     answer = result.get("answer") or result.get("output_text") or ""
     context = result.get("context", []) or []
-    sources = []
+    sources: List[str] = []
     for d in context:
         try:
-            # try common metadata keys
             meta = getattr(d, "metadata", {}) or {}
             src = meta.get("source") or meta.get("file") or meta.get("url")
             if src:
@@ -135,55 +155,3 @@ def run_llm(
             pass
 
     return {"answer": answer, "sources": sources, "k": len(context)}
-
-    history_aware_retriever = create_history_aware_retriever(
-        llm=chat,
-        retriever=docsearch.as_retriever(),
-        prompt=rephrase_prompt,
-    )
-
-    qa = create_retrieval_chain(
-        retriever=history_aware_retriever,
-        combine_docs_chain=stuff_documents_chain,
-    )
-
-    # ---- Invoke ----
-    payload = {
-        "input": query,
-        "chat_history": chat_history or [],
-    }
-    result = qa.invoke(input=payload)
-    return result
-
-
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
-
-
-def run_llm2(query: str, chat_history: List[Dict[str, Any]] = []):
-    embeddings = OpenAIEmbeddings()
-    docsearch = PineconeVectorStore(index_name=INDEX_NAME, embedding=embeddings)
-    chat = ChatOpenAI(model_name="gpt-4o", verbose=True, temperature=0)
-
-    rephrase_prompt = hub.pull("langchain-ai/chat-langchain-rephrase")
-
-    retrieval_qa_chat_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
-
-    rag_chain = (
-        {
-            "context": docsearch.as_retriever() | format_docs,
-            "input": RunnablePassthrough(),
-        }
-        | retrieval_qa_chat_prompt
-        | chat
-        | StrOutputParser()
-    )
-
-    retrieve_docs_chain = (lambda x: x["input"]) | docsearch.as_retriever()
-
-    chain = RunnablePassthrough.assign(context=retrieve_docs_chain).assign(
-        answer=rag_chain
-    )
-
-    result = chain.invoke({"input": query, "chat_history": chat_history})
-    return result
