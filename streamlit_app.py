@@ -39,6 +39,20 @@ else:
         "Local: create .streamlit/secrets.toml or set env vars."
     )
 
+if "pinecone" in st.secrets:
+    pc = st.secrets["pinecone"]
+    if pc.get("api_key"):
+        os.environ["PINECONE_API_KEY"] = str(pc["api_key"])
+    # Accept either 'environment' (serverless or classic) or 'region'
+    if pc.get("environment"):
+        os.environ["PINECONE_ENVIRONMENT"] = str(pc["environment"])
+    elif pc.get("region"):
+        os.environ["PINECONE_REGION"] = str(pc["region"])
+    if pc.get("index"):
+        os.environ["PINECONE_INDEX_NAME"] = str(pc["index"])
+else:
+    st.sidebar.warning("No [pinecone] block found in Secrets. RAG will fail until you add it.")
+
 # --- Import anything that might read env vars or call st.* at import time *after* the above ---
 from backend.core import run_llm  # moved down
 
