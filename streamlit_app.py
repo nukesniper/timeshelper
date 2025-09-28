@@ -18,14 +18,35 @@ def get_secret(name: str, env: str | None = None, default=None):
         return os.environ[env]
     return default
 
-# ========== LOAD KEYS & EXPORT TO ENV ==========
-# OPENAI
-OPENAI_API_KEY = get_secret("OPENAI_API_KEY", env="OPENAI_API_KEY")
-if OPENAI_API_KEY:
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-    st.sidebar.success("Secrets loaded. Found: OPENAI_API_KEY")
+# --- OpenAI Org/Project (optional but required for sk-proj- keys) ---
+OPENAI_PROJECT = (st.secrets.get("OPENAI_PROJECT") or os.getenv("OPENAI_PROJECT") or "").strip()
+OPENAI_ORG_ID = (st.secrets.get("OPENAI_ORG_ID") or os.getenv("OPENAI_ORG_ID") or "").strip()
+
+if OPENAI_PROJECT:
+    os.environ["OPENAI_PROJECT"] = OPENAI_PROJECT
+    st.sidebar.success(f"Found: OPENAI_PROJECT = {OPENAI_PROJECT}")
 else:
-    st.sidebar.error("OPENAI_API_KEY not found in Secrets or environment.")
+    st.sidebar.warning("OPENAI_PROJECT not set (required for sk-proj-* keys).")
+
+if OPENAI_ORG_ID:
+    os.environ["OPENAI_ORG_ID"] = OPENAI_ORG_ID
+    st.sidebar.success(f"Found: OPENAI_ORG_ID = {OPENAI_ORG_ID}")
+else:
+    st.sidebar.info("OPENAI_ORG_ID not set (often optional).")
+
+# Optional sanity (masked key)
+def _mask(s: str | None, keep: int = 4) -> str:
+    if not s:
+        return ""
+    return ("*" * max(len(s) - keep, 0)) + s[-keep:]
+
+st.sidebar.caption("🔐 OpenAI sanity")
+st.sidebar.write({
+    "OPENAI_API_KEY": _mask(os.getenv("OPENAI_API_KEY")),
+    "OPENAI_PROJECT": os.getenv("OPENAI_PROJECT"),
+    "OPENAI_ORG_ID": os.getenv("OPENAI_ORG_ID"),
+})
+
 
 # PINECONE (support both flat and [pinecone] section)
 pinecone_section = {}

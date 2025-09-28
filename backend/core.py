@@ -79,16 +79,33 @@ def run_llm(
         )
     os.environ["PINECONE_ENVIRONMENT"] = pc_env  # ensure downstream libs see it
 
-    # ---- Models ----
-    embeddings = OpenAIEmbeddings(model=embedding_model, api_key=api_key)
-    chat = ChatOpenAI(model=chat_model, temperature=temperature, api_key=api_key)
+        # ---- Models ----
+    # Read optional Organization / Project for project-scoped keys (sk-proj-*)
+    org_id = (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None
+    project = (os.getenv("OPENAI_PROJECT") or "").strip() or None
 
-    # ---- Vector store / retriever ----
-    if namespace:
-        vectorstore = PineconeVectorStore(index_name=index_name, embedding=embeddings, namespace=namespace)
-    else:
-        vectorstore = PineconeVectorStore(index_name=index_name, embedding=embeddings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+    # Basic sanity on the key to catch empty/whitespace values early
+    api_key = api_key.strip()
+    if not api_key.startswith("sk-") or len(api_key) < 20:
+        raise ConfigError(
+            "OPENAI_API_KEY looks invalid. Make sure it starts with 'sk-' "
+            "and is copied exactly from the OpenAI dashboard."
+        )
+
+    # Build clients, forwarding optional org/project
+    embeddings = OpenAIEmbeddings(
+        model=embedding_model,
+        api_key=api_key,
+        organization=org_id,
+        project=project,
+    )
+    chat = ChatOpenAI(
+        model=chat_model,
+        temperature=temperature,
+        api_key=api_key,
+        organization=org_id,
+        project=project,
+    )
 
     # ---- Prompts & chains ----
     rephrase_prompt = hub.pull("langchain-ai/chat-langchain-rephrase")
