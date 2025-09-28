@@ -72,12 +72,6 @@ if not pc_env:
         "In Secrets, set [pinecone].environment = \"us-east-1-aws\" (or your region)."
     )
 os.environ["PINECONE_ENVIRONMENT"] = pc_env  # ensure downstream libs see it
-
-
-    # If the app relies on env, ensure they exist (will raise with a clear message)
-    _ = os.getenv("PINECONE_API_KEY") or _require_env("PINECONE_API_KEY")
-    _ = os.getenv("PINECONE_ENVIRONMENT") or _require_env("PINECONE_ENVIRONMENT")
-
     # ---- Models ----
     embeddings = OpenAIEmbeddings(model=embedding_model, api_key=api_key)
     chat = ChatOpenAI(model=chat_model, temperature=temperature, api_key=api_key)
