@@ -2,19 +2,28 @@
 from datetime import datetime
 #load_dotenv()
 from typing import Set
-import os 
+import os
 import streamlit as st
 
-# Pull from Streamlit Secrets (preferred) or fallback to env (local dev)
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-PINECONE_API_KEY = st.secrets.get("PINECONE_API_KEY") or os.getenv("PINECONE_API_KEY")
+def _get_secret(name: str):
+    # 1) Prefer real environment variables (good for local dev/CI)
+    val = os.getenv(name)
+    if val:
+        return val
+    # 2) Fall back to Streamlit secrets (works on Cloud; may not exist locally)
+    try:
+        return st.secrets[name]  # don't use .get(), it still parses and may raise
+    except Exception:
+        return None
 
-# Export as environment variables so any downstream libs pick them up
+# Pull keys once, then export as env so downstream libs auto-detect them
+OPENAI_API_KEY = _get_secret("OPENAI_API_KEY")
+PINECONE_API_KEY = _get_secret("PINECONE_API_KEY")
+
 if OPENAI_API_KEY:
     os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 if PINECONE_API_KEY:
     os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
-
 from backend.core import run_llm
 
 st.set_page_config(

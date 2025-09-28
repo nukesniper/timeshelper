@@ -6,7 +6,7 @@ from langchain_core.runnables import RunnablePassthrough
 
 
 from typing import Any, Dict, List
-
+import os
 from langchain import hub
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.history_aware_retriever import create_history_aware_retriever
@@ -18,7 +18,8 @@ from consts import INDEX_NAME
 
 
 def run_llm(query: str, chat_history: List[Dict[str, Any]] = []):
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=api_key)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, api_key=api_key)
     # modified to include the possibility of querying over a specific namespace
     docsearch = PineconeVectorStore(index_name=INDEX_NAME, embedding=embeddings) #namespace="ctf")
     chat = ChatOpenAI(verbose=True, temperature=0)
