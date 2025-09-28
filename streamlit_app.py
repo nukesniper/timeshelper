@@ -39,19 +39,17 @@ else:
         "Local: create .streamlit/secrets.toml or set env vars."
     )
 
-if "pinecone" in st.secrets:
-    pc = st.secrets["pinecone"]
-    if pc.get("api_key"):
-        os.environ["PINECONE_API_KEY"] = str(pc["api_key"])
-    # Accept either 'environment' (serverless or classic) or 'region'
-    if pc.get("environment"):
-        os.environ["PINECONE_ENVIRONMENT"] = str(pc["environment"])
-    elif pc.get("region"):
-        os.environ["PINECONE_REGION"] = str(pc["region"])
-    if pc.get("index"):
-        os.environ["PINECONE_INDEX_NAME"] = str(pc["index"])
+PINECONE_API_KEY = get_secret("PINECONE_API_KEY", env="PINECONE_API_KEY")
+
+# Optional: export to env for libs that expect env vars
+if PINECONE_API_KEY:
+    os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
+    st.sidebar.success("Secrets loaded. Found: PINECONE_API_KEY")
 else:
-    st.sidebar.warning("No [pinecone] block found in Secrets. RAG will fail until you add it.")
+    st.sidebar.error("PINECONE_API_KEY not found in app Secrets or environment.")
+    st.sidebar.info(
+        "On Cloud: ⋯ → Manage app → Settings → Secrets (correct repo/branch), then Save & Restart.\n"
+        "Local: create .streamlit/secrets.toml or set env vars."
 
 # --- Import anything that might read env vars or call st.* at import time *after* the above ---
 from backend.core import run_llm  # moved down
