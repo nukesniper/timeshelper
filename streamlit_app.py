@@ -1,26 +1,48 @@
-#from dotenv import load_dotenv
 from datetime import datetime
-#load_dotenv()
 from typing import Set
 import os
 import streamlit as st
 
-# flat
-openai_key = st.secrets["OPENAI_API_KEY"]
-
-# nested
-pinecone_api_key = st.secrets["pinecone"]["api_key"]
-pinecone_env     = st.secrets["pinecone"]["environment"]
-
-from backend.core import run_llm
-
+# --- Page config: FIRST Streamlit call ---
 st.set_page_config(
     page_title="Your App Title",
     page_icon="🧊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-# Add these imports
+
+# --- Secrets helper + diagnostics ---
+def get_secret(name, env=None, default=None):
+    # Prefer Streamlit Secrets; fallback to env var; finally default
+    try:
+        if name in st.secrets:
+            val = st.secrets[name]
+            if val is not None:
+                return str(val)
+    except Exception:
+        pass
+    if env and env in os.environ:
+        return os.environ[env]
+    return default
+
+# Read secrets
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY", env="OPENAI_API_KEY")
+
+# Optional: export to env for libs that expect env vars
+if OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+    st.sidebar.success("Secrets loaded. Found: OPENAI_API_KEY")
+else:
+    st.sidebar.error("OPENAI_API_KEY not found in app Secrets or environment.")
+    st.sidebar.info(
+        "On Cloud: ⋯ → Manage app → Settings → Secrets (correct repo/branch), then Save & Restart.\n"
+        "Local: create .streamlit/secrets.toml or set env vars."
+    )
+
+# --- Import anything that might read env vars or call st.* at import time *after* the above ---
+from backend.core import run_llm  # moved down
+
+# Other imports
 from PIL import Image
 import requests
 from io import BytesIO
