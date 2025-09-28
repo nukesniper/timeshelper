@@ -3,10 +3,10 @@ from typing import Set
 import os
 import streamlit as st
 
-# --- Page config FIRST ---
+# ========== PAGE CONFIG (first Streamlit call) ==========
 st.set_page_config(page_title="Your App Title", page_icon="🧊", layout="wide")
 
-# --- Secrets helpers ---
+# ========== SECRETS HELPER ==========
 def get_secret(name, env=None, default=None):
     try:
         if name in st.secrets:
@@ -19,7 +19,7 @@ def get_secret(name, env=None, default=None):
         return os.environ[env]
     return default
 
-# --- Load keys + export to env ---
+# ========== LOAD KEYS & EXPORT TO ENV ==========
 OPENAI_API_KEY = get_secret("OPENAI_API_KEY", env="OPENAI_API_KEY")
 if OPENAI_API_KEY:
     os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
@@ -48,9 +48,10 @@ st.sidebar.write({
     "PINECONE_ENVIRONMENT": os.getenv("PINECONE_ENVIRONMENT"),
 })
 
-# ===== END of setup =====
-# IMPORTANT: this import must be at column 0 (no indentation)
-from backend.core import run_llm
+# ========== END OF SETUP (leave a blank line below) ==========
+
+from backend.core import run_llm  # noqa: E402
+
 
 
 # Other imports
