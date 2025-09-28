@@ -1,10 +1,11 @@
 #from dotenv import load_dotenv
 
 #load_dotenv()
+# backend/core.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 import os
+from typing import Any, Dict, List, Optional
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -20,6 +21,7 @@ from consts import INDEX_NAME
 
 
 class ConfigError(RuntimeError):
+    """Config/Env problems raised with a clear message."""
     pass
 
 
@@ -29,7 +31,8 @@ def _require_env(name: str) -> str:
     if not v:
         raise ConfigError(
             f"Missing required environment variable: {name}. "
-            f"Set it in Streamlit Secrets and export it to env (e.g. os.environ['{name}'] = '...')."
+            f"Set it in Streamlit Secrets and export it to env "
+            f"(e.g., os.environ['{name}'] = '...')."
         )
     return v
 
@@ -40,7 +43,7 @@ def run_llm(
     *,
     openai_api_key: Optional[str] = None,
     pinecone_api_key: Optional[str] = None,
-    pinecone_environment: Optional[str] = None,
+    pinecone_environment: Optional[str] = None,  # for classic pods; serverless uses region
     index_name: str = INDEX_NAME,
     embedding_model: str = "text-embedding-3-small",
     chat_model: str = "gpt-4o-mini",
@@ -49,43 +52,72 @@ def run_llm(
 ) -> Dict[str, Any]:
     """
     Execute the RAG chain. Keys can be passed explicitly or read from env vars:
-    - OPENAI_API_KEY
-    - PINECONE_API_KEY, PINECONE_ENVIRONMENT
+      - OPENAI_API_KEY
+      - PINECONE_API_KEY, PINECONE_ENVIRONMENT (or PINECONE_REGION)
+    Returns:
+      dict(answer=str, sources=list[str], k=int)
     """
 
-# ---- Keys / env setup ----
-api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise ConfigError("OPENAI_API_KEY is not set.")
+    # ---- Keys / env setup ----
+    api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ConfigError("OPENAI_API_KEY is not set.")
 
-if pinecone_api_key:
-    os.environ["PINECONE_API_KEY"] = pinecone_api_key
-pc_key = os.getenv("PINECONE_API_KEY")
-if not pc_key:
-    raise ConfigError("PINECONE_API_KEY is not set. Add it under [pinecone].api_key in Secrets.")
+    if pinecone_api_key:
+        os.environ["PINECONE_API_KEY"] = pinecone_api_key
+    pc_key = os.getenv("PINECONE_API_KEY")
+    if not pc_key:
+        raise ConfigError("PINECONE_API_KEY is not set. Add it under [pinecone].api_key in Secrets.")
 
-# Accept either ENVIRONMENT or REGION; normalize to ENVIRONMENT
-pc_env = pinecone_environment or os.getenv("PINECONE_ENVIRONMENT") or os.getenv("PINECONE_REGION")
-if not pc_env:
-    raise ConfigError(
-        "PINECONE_ENVIRONMENT (or PINECONE_REGION) is not set. "
-        "In Secrets, set [pinecone].environment = \"us-east-1-aws\" (or your region)."
-    )
-os.environ["PINECONE_ENVIRONMENT"] = pc_env  # ensure downstream libs see it
+    # Accept either ENVIRONMENT or REGION; normalize to ENVIRONMENT for libs that still expect it
+    pc_env = pinecone_environment or os.getenv("PINECONE_ENVIRONMENT") or os.getenv("PINECONE_REGION")
+    if not pc_env:
+        raise ConfigError(
+            "PINECONE_ENVIRONMENT (or PINECONE_REGION) is not set. "
+            'In Secrets, set [pinecone].environment = "gcp-starter" (classic) '
+            'or a serverless region like "us-east-1-aws".'
+        )
+    os.environ["PINECONE_ENVIRONMENT"] = pc_env  # ensure downstream libs see it
+
     # ---- Models ----
     embeddings = OpenAIEmbeddings(model=embedding_model, api_key=api_key)
     chat = ChatOpenAI(model=chat_model, temperature=temperature, api_key=api_key)
 
     # ---- Vector store / retriever ----
     if namespace:
-        docsearch = PineconeVectorStore(index_name=index_name, embedding=embeddings, namespace=namespace)
+        vectorstore = PineconeVectorStore(index_name=index_name, embedding=embeddings, namespace=namespace)
     else:
-        docsearch = PineconeVectorStore(index_name=index_name, embedding=embeddings)
+        vectorstore = PineconeVectorStore(index_name=index_name, embedding=embeddings)
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
     # ---- Prompts & chains ----
     rephrase_prompt = hub.pull("langchain-ai/chat-langchain-rephrase")
-    retrieval_qa_chat_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
-    stuff_documents_chain = create_stuff_documents_chain(chat, retrieval_qa_chat_prompt)
+    qa_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
+
+    history_aware = create_history_aware_retriever(chat, retriever, rephrase_prompt)
+    stuff_chain = create_stuff_documents_chain(chat, qa_prompt)
+    rag_chain = create_retrieval_chain(history_aware, stuff_chain)
+
+    # ---- Invoke ----
+    result = rag_chain.invoke(
+        {"input": query, "chat_history": chat_history or []}
+    )
+
+    # LangChain may return "answer" or "output_text" depending on versions
+    answer = result.get("answer") or result.get("output_text") or ""
+    context = result.get("context", []) or []
+    sources = []
+    for d in context:
+        try:
+            # try common metadata keys
+            meta = getattr(d, "metadata", {}) or {}
+            src = meta.get("source") or meta.get("file") or meta.get("url")
+            if src:
+                sources.append(str(src))
+        except Exception:
+            pass
+
+    return {"answer": answer, "sources": sources, "k": len(context)}
 
     history_aware_retriever = create_history_aware_retriever(
         llm=chat,
