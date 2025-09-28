@@ -22,18 +22,15 @@ class ConfigError(RuntimeError):
 def _openai_sanity_check(api_key: str) -> None:
     """Fail fast with a readable error if key/project/org is wrong."""
     from openai import OpenAI
-    import re
 
     key = (api_key or "").strip()
-    org = (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None
     proj = (os.getenv("OPENAI_PROJECT") or "").strip() or None
     base = (os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "").strip() or None
 
-    # Quick validations
     if key.startswith("sk-proj-") and not (proj and proj.startswith("proj_")):
         raise ConfigError(
             "Using a project-scoped key (sk-proj-*) but OPENAI_PROJECT is missing or invalid.\n"
-            "Set OPENAI_PROJECT to your exact ID like 'proj_xxxxx' from the SAME project that issued the key."
+            "Set OPENAI_PROJECT to the exact 'proj_…' of the SAME project that issued the key."
         )
     if base:
         raise ConfigError(
@@ -41,51 +38,27 @@ def _openai_sanity_check(api_key: str) -> None:
             "Unset it unless you intentionally use Azure/proxy."
         )
 
-    def _mask(s: str | None, keep: int = 6) -> str:
-        if not s: return "(unset)"
-        return ("*" * max(len(s) - keep, 0)) + s[-keep:]
+    # Try without org header first (it’s usually unnecessary for project keys)
+    def _try(organization: Optional[str]):
+        return OpenAI(api_key=key, organization=organization, project=proj)
 
-    # Try client WITHOUT org first (project-scoped keys normally don't need org)
-    def try_client(_org: str | None):
-        return OpenAI(api_key=key, organization=_org, project=proj)
-
-    last_err = None
-    for _org_try in (None, org):
+    last = None
+    for org_try in (None, (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None):
         try:
-            client = try_client(_org_try)
-            client.models.list()  # cheap auth-required call
-            return  # success!
+            client = _try(org_try)
+            client.models.list()
+            return
         except Exception as e:
-            last_err = e
+            last = e
 
-    # If we got here, both attempts failed
-    hint = (
+    raise ConfigError(
         "OpenAI authentication failed.\n"
-        "Checklist:\n"
-        "  • OPENAI_API_KEY must be valid. For project keys it starts with 'sk-proj-'.\n"
-        "  • OPENAI_PROJECT must be the exact 'proj_…' from the SAME project as the key.\n"
-        "  • Remove OPENAI_ORG_ID unless you are sure it matches the project’s org.\n"
-        "  • Ensure OPENAI_BASE_URL / OPENAI_API_BASE is NOT set (unless using Azure/proxy).\n"
-        f"Used values:\n"
-        f"  • API key:   {_mask(key)}\n"
-        f"  • Project:   {proj or '(unset)'}\n"
-        f"  • Org ID:    {org or '(unset)'}\n"
-        f"  • Base URL:  {base or '(default)'}\n"
-        f"Raw error type: {type(last_err).__name__}. Check Cloud logs for the server message."
-    )
-    raise ConfigError(hint) from last_err
-
-
-def _require_env(name: str) -> str:
-    """Fetch required env var or raise a clear error."""
-    v = os.getenv(name)
-    if not v:
-        raise ConfigError(
-            f"Missing required environment variable: {name}. "
-            f"Set it in Streamlit Secrets and export it to env "
-            f"(e.g., os.environ['{name}'] = '...')."
-        )
-    return v
+        "• Key must be valid. For project keys it starts with 'sk-proj-'.\n"
+        "• OPENAI_PROJECT must be the exact 'proj_…' from the SAME project as the key.\n"
+        "• Remove OPENAI_ORG_ID unless you are sure it matches the project’s org.\n"
+        "• Ensure no OPENAI_BASE_URL / OPENAI_API_BASE is set.\n"
+        f"Raw error type: {type(last).__name__}. Check Cloud logs for details."
+    ) from last
 
 
 def run_llm(
@@ -94,7 +67,7 @@ def run_llm(
     *,
     openai_api_key: Optional[str] = None,
     pinecone_api_key: Optional[str] = None,
-    pinecone_environment: Optional[str] = None,  # for classic pods; serverless uses region
+    pinecone_environment: Optional[str] = None,  # classic pods; serverless uses region
     index_name: str = INDEX_NAME,
     embedding_model: str = "text-embedding-3-small",
     chat_model: str = "gpt-4o-mini",
@@ -102,11 +75,8 @@ def run_llm(
     namespace: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Execute the RAG chain. Keys can be passed explicitly or read from env vars:
-      - OPENAI_API_KEY
-      - PINECONE_API_KEY, PINECONE_ENVIRONMENT (or PINECONE_REGION)
-    Returns:
-      dict(answer=str, sources=list[str], k=int)
+    Execute the RAG chain. Reads keys from env if not passed.
+    Returns: {"answer": str, "sources": list[str], "k": int}
     """
     # ---- Keys / env setup ----
     api_key = (openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip()
@@ -115,11 +85,9 @@ def run_llm(
 
     if pinecone_api_key:
         os.environ["PINECONE_API_KEY"] = pinecone_api_key
-    pc_key = os.getenv("PINECONE_API_KEY")
-    if not pc_key:
+    if not os.getenv("PINECONE_API_KEY"):
         raise ConfigError("PINECONE_API_KEY is not set. Add it under [pinecone].api_key in Secrets.")
 
-    # Accept either ENVIRONMENT or REGION; normalize to ENVIRONMENT for libs that still expect it
     pc_env = pinecone_environment or os.getenv("PINECONE_ENVIRONMENT") or os.getenv("PINECONE_REGION")
     if not pc_env:
         raise ConfigError(
@@ -127,32 +95,23 @@ def run_llm(
             'In Secrets, set [pinecone].environment = "gcp-starter" (classic) '
             'or a serverless region like "us-east-1-aws".'
         )
-    os.environ["PINECONE_ENVIRONMENT"] = pc_env  # ensure downstream libs see it
+    os.environ["PINECONE_ENVIRONMENT"] = pc_env
 
-    # ---- Fast auth sanity (will raise ConfigError with guidance) ----
+    # ---- Fast auth sanity ----
     _openai_sanity_check(api_key)
 
-# ---- Models ----
-project = (os.getenv("OPENAI_PROJECT") or "").strip() or None
-org_id = (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None
+    # ---- Models ----
+    project = (os.getenv("OPENAI_PROJECT") or "").strip() or None
+    org_id = (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None
 
-api_key = api_key.strip()
-if not api_key.startswith("sk-proj-"):
-    raise ConfigError("You’re using a project-scoped flow; OPENAI_API_KEY must start with 'sk-proj-'.")
+    emb_kwargs = {"model": embedding_model, "api_key": api_key, "project": project}
+    chat_kwargs = {"model": chat_model, "temperature": temperature, "api_key": api_key, "project": project}
+    if org_id:
+        emb_kwargs["organization"] = org_id
+        chat_kwargs["organization"] = org_id
 
-# Do the sanity check BEFORE constructing LangChain wrappers
-_openai_sanity_check(api_key)
-
-# Build clients; only pass organization if it's really present
-emb_kwargs = {"model": embedding_model, "api_key": api_key, "project": project}
-chat_kwargs = {"model": chat_model, "temperature": temperature, "api_key": api_key, "project": project}
-if org_id:
-    emb_kwargs["organization"] = org_id
-    chat_kwargs["organization"] = org_id
-
-embeddings = OpenAIEmbeddings(**emb_kwargs)
-chat = ChatOpenAI(**chat_kwargs)
-
+    embeddings = OpenAIEmbeddings(**emb_kwargs)
+    chat = ChatOpenAI(**chat_kwargs)
 
     # ---- Vector store / retriever ----
     if namespace:
@@ -172,7 +131,6 @@ chat = ChatOpenAI(**chat_kwargs)
     # ---- Invoke ----
     result = rag_chain.invoke({"input": query, "chat_history": chat_history or []})
 
-    # LangChain may return "answer" or "output_text" depending on versions
     answer = result.get("answer") or result.get("output_text") or ""
     context = result.get("context", []) or []
     sources: List[str] = []
