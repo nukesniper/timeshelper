@@ -49,7 +49,7 @@ else:
     st.sidebar.error("PINECONE_API_KEY not found in app Secrets or environment.")
     st.sidebar.info(
         "On Cloud: ⋯ → Manage app → Settings → Secrets (correct repo/branch), then Save & Restart.\n"
-        "Local: create .streamlit/secrets.toml or set env vars."
+        "Local: create .streamlit/secrets.toml or set env vars.")
 
 # --- Import anything that might read env vars or call st.* at import time *after* the above ---
 from backend.core import run_llm  # moved down
