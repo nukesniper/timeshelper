@@ -1,5 +1,3 @@
-from datetime import datetime
-from typing import Set
 import os
 import streamlit as st
 
@@ -7,7 +5,8 @@ import streamlit as st
 st.set_page_config(page_title="Your App Title", page_icon="🧊", layout="wide")
 
 # ========== SECRETS HELPER ==========
-def get_secret(name, env=None, default=None):
+def get_secret(name: str, env: str | None = None, default=None):
+    """Return a secret from st.secrets[name] (flat), else os.environ[env], else default."""
     try:
         if name in st.secrets:
             v = st.secrets[name]
@@ -20,26 +19,46 @@ def get_secret(name, env=None, default=None):
     return default
 
 # ========== LOAD KEYS & EXPORT TO ENV ==========
+# OPENAI
 OPENAI_API_KEY = get_secret("OPENAI_API_KEY", env="OPENAI_API_KEY")
 if OPENAI_API_KEY:
     os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
     st.sidebar.success("Secrets loaded. Found: OPENAI_API_KEY")
 else:
-    st.sidebar.error("OPENAI_API_KEY not found.")
+    st.sidebar.error("OPENAI_API_KEY not found in Secrets or environment.")
 
-pc = st.secrets.get("pinecone", {})
-if pc.get("api_key"):
-    os.environ["PINECONE_API_KEY"] = str(pc["api_key"])
+# PINECONE (support both flat and [pinecone] section)
+pinecone_section = {}
+try:
+    pinecone_section = dict(st.secrets.get("pinecone", {}))  # may be empty
+except Exception:
+    pinecone_section = {}
+
+PINECONE_API_KEY = (
+    pinecone_section.get("api_key")
+    or get_secret("PINECONE_API_KEY", env="PINECONE_API_KEY")
+)
+
+if PINECONE_API_KEY:
+    os.environ["PINECONE_API_KEY"] = str(PINECONE_API_KEY)
     st.sidebar.success("Secrets loaded. Found: PINECONE_API_KEY")
 else:
-    st.sidebar.error("Missing [pinecone].api_key in Secrets.")
+    st.sidebar.error("PINECONE_API_KEY missing (either flat or [pinecone].api_key).")
 
-env_or_region = pc.get("environment") or pc.get("region")
-if env_or_region:
-    os.environ["PINECONE_ENVIRONMENT"] = str(env_or_region)
-    st.sidebar.success(f"PINECONE_ENVIRONMENT set: {env_or_region}")
+# Environment (classic) or region (serverless)
+PINECONE_ENV_OR_REGION = (
+    pinecone_section.get("environment")
+    or pinecone_section.get("region")
+    or get_secret("PINECONE_ENVIRONMENT", env="PINECONE_ENVIRONMENT")
+    or get_secret("PINECONE_REGION", env="PINECONE_REGION")
+)
+
+if PINECONE_ENV_OR_REGION:
+    # We export to PINECONE_ENVIRONMENT for backward-compat with classic clients.
+    os.environ["PINECONE_ENVIRONMENT"] = str(PINECONE_ENV_OR_REGION)
+    st.sidebar.success(f'PINECONE_ENVIRONMENT set: {PINECONE_ENV_OR_REGION}')
 else:
-    st.sidebar.error("Missing [pinecone].environment (or region) in Secrets.")
+    st.sidebar.warning("No Pinecone environment/region provided (ok for some serverless setups).")
 
 # Optional sanity
 st.sidebar.caption("🔐 Pinecone sanity")
@@ -48,10 +67,19 @@ st.sidebar.write({
     "PINECONE_ENVIRONMENT": os.getenv("PINECONE_ENVIRONMENT"),
 })
 
-# ========== END OF SETUP (leave a blank line below) ==========
+# ========== END OF SETUP ==========
 
-from backend.core import run_llm  # noqa: E402
-
+# Keep imports at top-level and unindented; if this fails, show a friendly error.
+try:
+    from backend.core import run_llm  # noqa: E402
+except Exception as e:
+    st.error(
+        "Failed to import `run_llm` from `backend.core`. "
+        "Check that `backend/__init__.py` is valid Python (no stray `[theme]`), "
+        "`backend/core.py` exists, and the repo path is correct."
+    )
+    st.exception(e)
+    st.stop()
 
 
 # Other imports
