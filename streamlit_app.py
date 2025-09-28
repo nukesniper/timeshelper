@@ -39,17 +39,32 @@ else:
         "Local: create .streamlit/secrets.toml or set env vars."
     )
 
-PINECONE_API_KEY = get_secret("PINECONE_API_KEY", env="PINECONE_API_KEY")
+# Pinecone: export both API key and environment/region
+pc = st.secrets.get("pinecone", {})
+if pc:
+    if pc.get("api_key"):
+        os.environ["PINECONE_API_KEY"] = str(pc["api_key"])
+        st.sidebar.success("Secrets loaded. Found: PINECONE_API_KEY")
+    else:
+        st.sidebar.error("Missing [pinecone].api_key in Secrets.")
 
-# Optional: export to env for libs that expect env vars
-if PINECONE_API_KEY:
-    os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
-    st.sidebar.success("Secrets loaded. Found: PINECONE_API_KEY")
+    # Accept either 'environment' (serverless/classic) or 'region' (sometimes used)
+    env_or_region = pc.get("environment") or pc.get("region")
+    if env_or_region:
+        # normalize to PINECONE_ENVIRONMENT so backend/core.py finds it
+        os.environ["PINECONE_ENVIRONMENT"] = str(env_or_region)
+        st.sidebar.success(f"PINECONE_ENVIRONMENT set: {env_or_region}")
+    else:
+        st.sidebar.error("Missing [pinecone].environment (or region) in Secrets.")
 else:
-    st.sidebar.error("PINECONE_API_KEY not found in app Secrets or environment.")
-    st.sidebar.info(
-        "On Cloud: ⋯ → Manage app → Settings → Secrets (correct repo/branch), then Save & Restart.\n"
-        "Local: create .streamlit/secrets.toml or set env vars.")
+    st.sidebar.warning("No [pinecone] section in Secrets — RAG will fail.")
+
+# Optional sanity display
+st.sidebar.caption("🔐 Pinecone sanity")
+st.sidebar.write({
+    "PINECONE_API_KEY": bool(os.getenv("PINECONE_API_KEY")),
+    "PINECONE_ENVIRONMENT": os.getenv("PINECONE_ENVIRONMENT"),
+})
 
 # --- Import anything that might read env vars or call st.* at import time *after* the above ---
 from backend.core import run_llm  # moved down

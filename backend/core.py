@@ -53,19 +53,26 @@ def run_llm(
     - PINECONE_API_KEY, PINECONE_ENVIRONMENT
     """
 
-    # ---- Keys / env setup ----
-    # Prefer explicit args; otherwise read from env; raise if missing
-    api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ConfigError(
-            "OPENAI_API_KEY is not set. Provide openai_api_key=... to run_llm() "
-            "or export it to the environment."
-        )
+# ---- Keys / env setup ----
+api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise ConfigError("OPENAI_API_KEY is not set.")
 
-    if pinecone_api_key:
-        os.environ["PINECONE_API_KEY"] = pinecone_api_key
-    if pinecone_environment:
-        os.environ["PINECONE_ENVIRONMENT"] = pinecone_environment
+if pinecone_api_key:
+    os.environ["PINECONE_API_KEY"] = pinecone_api_key
+pc_key = os.getenv("PINECONE_API_KEY")
+if not pc_key:
+    raise ConfigError("PINECONE_API_KEY is not set. Add it under [pinecone].api_key in Secrets.")
+
+# Accept either ENVIRONMENT or REGION; normalize to ENVIRONMENT
+pc_env = pinecone_environment or os.getenv("PINECONE_ENVIRONMENT") or os.getenv("PINECONE_REGION")
+if not pc_env:
+    raise ConfigError(
+        "PINECONE_ENVIRONMENT (or PINECONE_REGION) is not set. "
+        "In Secrets, set [pinecone].environment = \"us-east-1-aws\" (or your region)."
+    )
+os.environ["PINECONE_ENVIRONMENT"] = pc_env  # ensure downstream libs see it
+
 
     # If the app relies on env, ensure they exist (will raise with a clear message)
     _ = os.getenv("PINECONE_API_KEY") or _require_env("PINECONE_API_KEY")
