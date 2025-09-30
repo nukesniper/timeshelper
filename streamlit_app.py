@@ -217,10 +217,10 @@ if st.session_state["chat_answers_history"]:
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
         
         # Display the user message with the role 'user'
-        st.chat_message("user", key=f"user_{timestamp}_{hash(user_query)}").markdown(user_query)
+        st.chat_message("user").markdown(user_query)
         
         # Display the bot message with the role 'bot'
-        st.chat_message("bot", key=f"bot_{timestamp}_{hash(generated_response)}").markdown(generated_response)
+        st.chat_message("bot").markdown(generated_response)
 
 # Add a footer
 st.markdown("---")
