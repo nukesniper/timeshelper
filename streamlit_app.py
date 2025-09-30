@@ -215,8 +215,8 @@ if st.session_state["chat_answers_history"]:
         reversed(st.session_state["user_prompt_history"]),
     ):
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
-        message(user_query, is_user=True, key=f"user_{timestamp}_{hash(user_query)}")
-        message(generated_response, key=f"bot_{timestamp}_{hash(generated_response)}")
+        st.message(user_query, is_user=True, key=f"user_{timestamp}_{hash(user_query)}")
+        st.message(generated_response, key=f"bot_{timestamp}_{hash(generated_response)}")
 
 # Add a footer
 st.markdown("---")
