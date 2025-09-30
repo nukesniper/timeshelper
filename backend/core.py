@@ -104,8 +104,8 @@ def run_llm(
     project = (os.getenv("OPENAI_PROJECT") or "").strip() or None
     org_id = (os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION") or "").strip() or None
 
-    emb_kwargs = {"model": embedding_model, "api_key": api_key, "project": project}
-    chat_kwargs = {"model": chat_model, "temperature": temperature, "api_key": api_key, "project": project}
+    emb_kwargs = {"model": embedding_model, "api_key": api_key}
+    chat_kwargs = {"model": chat_model, "temperature": temperature, "api_key": api_key}
     if org_id:
         emb_kwargs["organization"] = org_id
         chat_kwargs["organization"] = org_id
