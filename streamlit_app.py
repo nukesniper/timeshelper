@@ -1,6 +1,31 @@
 import os
 import streamlit as st
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def send_email_report(subject, body):
+    from_email = get_secret("user", "EMAIL_USER")  # from [email] section
+    from_password = get_secret("password", "EMAIL_PASSWORD")
+
+    to_email = from_email  # Send the report to yourself
+
+    msg = MIMEMultipart()
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(from_email, from_password)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Email failed: {e}")
+        return False
+
 
 # ========== PAGE CONFIG (first Streamlit call) ==========
 st.set_page_config(page_title="Your App Title", page_icon="🧊", layout="wide")
@@ -222,7 +247,27 @@ if st.session_state["chat_answers_history"]:
         # Display the bot message with the role 'bot'
         st.chat_message("bot").markdown(generated_response)
 
+# ========== REPORT FORM ==========
+
+with st.expander("📨 Report an Issue", expanded=False):
+    st.write("If something's not working or you want to suggest improvements, let me know.")
+
+    with st.form("issue_form"):
+        user_report_email = st.text_input("Your email (optional)")
+        issue_message = st.text_area("Describe the issue")
+
+        submit_report = st.form_submit_button("Send Report")
+
+    if submit_report:
+        if issue_message.strip():
+            subject = "New Issue Report from Streamlit App"
+            body = f"From: {user_report_email or 'Not provided'}\n\nIssue:\n{issue_message}"
+            success = send_email_report(subject, body)
+            if success:
+                st.success("✅ Your report has been sent. Thank you!")
+        else:
+            st.warning("Please describe the issue before submitting.")
 
 # Add a footer
 st.markdown("---")
-st.markdown("Powered by LangChain and Streamlit")
+st.markdown("Powered by LangChain and Streamlit. Courtesy of Eden Marco")
