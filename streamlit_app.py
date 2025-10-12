@@ -221,7 +221,6 @@ if st.session_state["chat_answers_history"]:
         
         # Display the bot message with the role 'bot'
         st.chat_message("bot").markdown(generated_response)
-        st.markdown(f"Sources:\n{create_sources_string(sources)}")
 
 
 # Add a footer
