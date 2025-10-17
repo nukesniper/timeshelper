@@ -4,10 +4,19 @@ from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import smtplib
+
+try:
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.set_debuglevel(1)  # Enable debug output
+        server.quit()
+    print("Connection successful.")
+except Exception as e:
+    print(f"Failed to connect: {e}")
 
 def send_email_report(subject, body):
-    from_email = get_secret("user", "EMAIL_USER")  # from [email] section
-    from_password = get_secret("password", "EMAIL_PASSWORD")
+    from_email = get_secret("email", "EMAIL_USER")  # from [email] section
+    from_password = get_secret("email", "EMAIL_PASSWORD")
 
     to_email = from_email  # Send the report to yourself
 
@@ -22,9 +31,13 @@ def send_email_report(subject, body):
             server.login(from_email, from_password)
             server.send_message(msg)
         return True
+    except smtplib.SMTPAuthenticationError:
+        st.error("SMTP Authentication Error: Check your email and password.")
+        return False
     except Exception as e:
         st.error(f"Email failed: {e}")
         return False
+
 
 
 # ========== PAGE CONFIG (first Streamlit call) ==========
