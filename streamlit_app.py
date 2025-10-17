@@ -18,6 +18,8 @@ def send_email_report(subject, body):
     from_email = get_secret("email", "EMAIL_USER")  # from [email] section
     from_password = get_secret("email", "EMAIL_PASSWORD")
 
+    print(f"Using email: {from_email}")  # Debugging line
+
     to_email = from_email  # Send the report to yourself
 
     msg = MIMEMultipart()
@@ -37,6 +39,7 @@ def send_email_report(subject, body):
     except Exception as e:
         st.error(f"Email failed: {e}")
         return False
+
 
 
 
