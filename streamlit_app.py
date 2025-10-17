@@ -260,26 +260,45 @@ if st.session_state["chat_answers_history"]:
         # Display the bot message with the role 'bot'
         st.chat_message("bot").markdown(generated_response)
 
-# ========== REPORT FORM ==========
-
+# ---------- REPORT FORM ----------
 with st.expander("📨 Report an Issue", expanded=False):
     st.write("If something's not working or you want to suggest improvements, let me know.")
 
     with st.form("issue_form"):
         user_report_email = st.text_input("Your email (optional)")
         issue_message = st.text_area("Describe the issue")
-
         submit_report = st.form_submit_button("Send Report")
 
     if submit_report:
-        if issue_message.strip():
-            subject = "New Issue Report from Streamlit App"
-            body = f"From: {user_report_email or 'Not provided'}\n\nIssue:\n{issue_message}"
-            success = send_email_report(subject, body)
-            if success:
-                st.success("✅ Your report has been sent. Thank you!")
-        else:
+        issue = issue_message.strip()
+        if not issue:
             st.warning("Please describe the issue before submitting.")
+        else:
+            subject = "New Issue Report from Streamlit App"
+            body = f"From: {user_report_email or 'Not provided'}\n\nIssue:\n{issue}"
+
+            # --- Prefer webhook if present; else use bot token ---
+            webhook_url = get_secret("slack", "SLACK_WEBHOOK_URL")
+            if webhook_url:
+                # Incoming Webhook path (simplest)
+                try:
+                    r = requests.post(
+                        webhook_url,
+                        headers={"Content-Type": "application/json"},
+                        data=json.dumps({"text": f"*{subject}*\n{body}"})
+                    )
+                    r.raise_for_status()
+                    st.success("✅ Your report has been sent to Slack. Thank you!")
+                except requests.RequestException as e:
+                    st.error(f"Failed to send Slack webhook: {e}")
+            else:
+                # Bot token path
+                sent = send_slack_report(subject, body)  # uses xoxb token + channel ID
+                if sent:
+                    st.success("✅ Your report has been sent to Slack. Thank you!")
+                else:
+                    st.error("Couldn't send the report to Slack. Please try again later.")
+
 
 # Add a footer
 st.markdown("---")
