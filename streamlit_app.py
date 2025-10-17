@@ -5,60 +5,57 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import smtplib
+import requests
+import json
 
-try:
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.set_debuglevel(1)  # Enable debug output
-        server.quit()
-    print("Connection successful.")
-except Exception as e:
-    print(f"Failed to connect: {e}")
-
-def send_email_report(subject, body):
-    from_email = get_secret("email", "EMAIL_USER")  # from [email] section
-    from_password = get_secret("email", "EMAIL_PASSWORD")
-
-    print(f"Using email: {from_email}")  # Debugging line
-
-    to_email = from_email  # Send the report to yourself
-
-    msg = MIMEMultipart()
-    msg["From"] = from_email
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
-
+# ---------- SECRETS HELPER ----------
+def get_secret(section: str, key: str, default=None):
+    """Return st.secrets[section][key] if present, else env var `key`, else default."""
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(from_email, from_password)
-            server.send_message(msg)
-        return True
-    except smtplib.SMTPAuthenticationError:
-        st.error("SMTP Authentication Error: Check your email and password.")
-        return False
-    except Exception as e:
-        st.error(f"Email failed: {e}")
-        return False
-
-
-
-
-# ========== PAGE CONFIG (first Streamlit call) ==========
-st.set_page_config(page_title="Your App Title", page_icon="🧊", layout="wide")
-
-# ========== SECRETS HELPER ==========
-def get_secret(name: str, env: str | None = None, default=None):
-    """Return a secret from st.secrets[name] (flat), else os.environ[env], else default."""
-    try:
-        if name in st.secrets:
-            v = st.secrets[name]
+        if section in st.secrets and key in st.secrets[section]:
+            v = st.secrets[section][key]
             if v is not None:
                 return str(v)
     except Exception:
         pass
-    if env and env in os.environ:
-        return os.environ[env]
-    return default
+    return os.environ.get(key, default)
+
+# ---------- SLACK ----------
+def send_slack_report(subject: str, body: str) -> bool:
+    slack_token = get_secret("slack", "SLACK_API_TOKEN")       # expects xoxb-...
+    slack_channel_id = get_secret("slack", "SLACK_CHANNEL_ID") # e.g. C0123456789
+
+    if not slack_token or not slack_channel_id:
+        st.error("Slack token or channel id missing.")
+        return False
+
+    url = "https://slack.com/api/chat.postMessage"
+    headers = {
+        "Authorization": f"Bearer {slack_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "channel": slack_channel_id,
+        "text": f"*{subject}*\n{body}",
+        # "username": "App Reporter"   # optional display name for webhooks; ignored for bot tokens
+    }
+
+    try:
+        resp = requests.post(url, headers=headers, data=json.dumps(payload))
+        data = resp.json()
+        if not data.get("ok"):
+            st.error(f"Slack API error: {data.get('error')}")
+            return False
+        return True
+    except requests.RequestException as e:
+        st.error(f"Failed to reach Slack: {e}")
+        return False
+
+def report_issue(subject: str, body: str):
+    if send_slack_report(subject, body):
+        st.success("Report sent to Slack.")
+    else:
+        st.error("Failed to send report to Slack.")
 
 # --- OpenAI Org/Project (optional but required for sk-proj- keys) ---
 OPENAI_PROJECT = (st.secrets.get("OPENAI_PROJECT") or os.getenv("OPENAI_PROJECT") or "").strip()
