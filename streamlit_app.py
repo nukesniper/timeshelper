@@ -63,26 +63,9 @@ OPENAI_ORG_ID = (st.secrets.get("OPENAI_ORG_ID") or os.getenv("OPENAI_ORG_ID") o
 
 if OPENAI_PROJECT:
     os.environ["OPENAI_PROJECT"] = OPENAI_PROJECT
-    st.sidebar.success(f"Found: OPENAI_PROJECT = {OPENAI_PROJECT}")
-else:
-    st.sidebar.warning("OPENAI_PROJECT not set (required for sk-proj-* keys).")
 
 if OPENAI_ORG_ID:
     os.environ["OPENAI_ORG_ID"] = OPENAI_ORG_ID
-    st.sidebar.success(f"Found: OPENAI_ORG_ID = {OPENAI_ORG_ID}")
-else:
-    st.sidebar.info("OPENAI_ORG_ID not set (often optional).")
-
-def _mask(s, keep=6): 
-    return ("*"*(len(s)-keep))+s[-keep:] if s and len(s) > keep else s or ""
-
-st.sidebar.caption("🔐 OpenAI sanity")
-st.sidebar.write({
-    "OPENAI_API_KEY": _mask(os.getenv("OPENAI_API_KEY")),
-    "OPENAI_PROJECT": os.getenv("OPENAI_PROJECT") or "(unset)",
-    "OPENAI_ORG_ID": os.getenv("OPENAI_ORG_ID") or "(unset)",
-    "OPENAI_BASE_URL": os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "(default)",
-})
 
 
 
@@ -100,9 +83,6 @@ PINECONE_API_KEY = (
 
 if PINECONE_API_KEY:
     os.environ["PINECONE_API_KEY"] = str(PINECONE_API_KEY)
-    st.sidebar.success("Secrets loaded. Found: PINECONE_API_KEY")
-else:
-    st.sidebar.error("PINECONE_API_KEY missing (either flat or [pinecone].api_key).")
 
 # Environment (classic) or region (serverless)
 PINECONE_ENV_OR_REGION = (
@@ -115,16 +95,6 @@ PINECONE_ENV_OR_REGION = (
 if PINECONE_ENV_OR_REGION:
     # We export to PINECONE_ENVIRONMENT for backward-compat with classic clients.
     os.environ["PINECONE_ENVIRONMENT"] = str(PINECONE_ENV_OR_REGION)
-    st.sidebar.success(f'PINECONE_ENVIRONMENT set: {PINECONE_ENV_OR_REGION}')
-else:
-    st.sidebar.warning("No Pinecone environment/region provided (ok for some serverless setups).")
-
-# Optional sanity
-st.sidebar.caption("🔐 Pinecone sanity")
-st.sidebar.write({
-    "PINECONE_API_KEY": bool(os.getenv("PINECONE_API_KEY")),
-    "PINECONE_ENVIRONMENT": os.getenv("PINECONE_ENVIRONMENT"),
-})
 
 # ========== END OF SETUP ==========
 
@@ -270,7 +240,7 @@ with st.sidebar:
 
     # You can replace these with actual user data
     user_name = "Lucas Fernandez de Losada"
-    user_email = "lucas.fernandez-de-losada@psi.ch"
+    user_email = "lucasfer@mit.edu"
 
     profile_pic = Image.open("Profile_Pic_MIT.jpg")
     st.image(profile_pic, width=150)
