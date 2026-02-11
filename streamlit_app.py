@@ -147,10 +147,79 @@ import requests
 from io import BytesIO
 
 
-def create_sources_string(source_urls: set[str] | None) -> str:
+@st.cache_data
+def extract_source_titles(source_paths_tuple: tuple) -> dict[str, str]:
+    """
+    Use LLM to extract human-readable titles from source file paths.
+    Returns mapping of path -> title.
+    Cached to avoid repeated LLM calls for the same sources.
+    """
+    if not source_paths_tuple:
+        return {}
+    
+    from langchain_openai import ChatOpenAI
+    
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {}
+    
+    try:
+        chat = ChatOpenAI(model="gpt-4o-mini", temperature=0.0, api_key=api_key)
+        
+        paths_list = sorted(list(source_paths_tuple))
+        paths_str = "\n".join(f"- {p}" for p in paths_list)
+        
+        prompt = f"""Given these source file paths, extract or infer a clean, concise title for each one.
+The title should be human-readable and describe what the document is about based on its name and directory.
+Keep titles short (2-8 words max).
+
+File paths:
+{paths_str}
+
+Respond in this exact format for each path (one per line, matching the order above):
+<title>
+
+Example for path "Chapter_5_Thermodynamics.pdf":
+Chapter 5: Thermodynamics
+
+Example for path "intro_to_python.md":
+Introduction to Python
+
+Now respond with only the titles, one per line, in the same order as the paths above:"""
+
+        response = chat.invoke(prompt)
+        content = response.content.strip()
+        
+        titles_list = [line.strip() for line in content.split('\n') if line.strip()]
+        
+        # Create mapping ensuring we have enough titles
+        titles_map = {}
+        for i, path in enumerate(paths_list):
+            if i < len(titles_list):
+                titles_map[path] = titles_list[i]
+            else:
+                # Fallback: extract filename from path
+                titles_map[path] = os.path.basename(path)
+        
+        return titles_map
+    except Exception as e:
+        st.warning(f"Could not extract titles from sources: {e}")
+        return {}
+
+
+def create_sources_string(source_urls: set[str] | None, titles_map: dict[str, str] | None = None) -> str:
     if not source_urls:
         return ""
-    lines = [f"{i}. {src}" for i, src in enumerate(sorted(source_urls), start=1)]
+    
+    if titles_map is None:
+        titles_map = {}
+    
+    lines = []
+    for i, src in enumerate(sorted(source_urls), start=1):
+        # Use LLM-generated title if available, otherwise use filename
+        title = titles_map.get(src, os.path.basename(src) or src)
+        lines.append(f"{i}. {title}")
+    
     return "sources:\n" + "\n".join(lines) + "\n"
 
 
@@ -242,7 +311,10 @@ if prompt:
                 raw_sources = []
         sources = set(raw_sources)
 
-        formatted_response = f"{generated_response.get('answer', '')} \n\n{create_sources_string(sources)}"
+        # Extract LLM-generated titles from source paths
+        titles_map = extract_source_titles(tuple(sorted(sources))) if sources else {}
+        
+        formatted_response = f"{generated_response.get('answer', '')} \n\n{create_sources_string(sources, titles_map)}"
 
         st.session_state["user_prompt_history"].append(prompt)
         st.session_state["chat_answers_history"].append(formatted_response)
