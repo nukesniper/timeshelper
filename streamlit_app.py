@@ -233,8 +233,7 @@ if prompt:
         )
 
         # Safely access 'context' and handle cases where it's missing
-        context = generated_response.get("context", [])
-        sources = set(doc.metadata.get("source", "") for doc in context)
+        sources = set(doc.metadata["source"] for doc in generated_response["context"])
 
         formatted_response = (
             f"{generated_response['answer']} \n\n {create_sources_string(sources)}"
