@@ -232,12 +232,17 @@ if prompt:
             query=prompt, chat_history=st.session_state["chat_history"]
         )
 
-        # Safely access 'context' and handle cases where it's missing
-        sources = set(doc.metadata["source"] for doc in generated_response["context"])
+        # Prefer `sources` returned by run_llm; fall back to any `context` documents
+        raw_sources = generated_response.get("sources") or []
+        if not raw_sources and "context" in generated_response:
+            try:
+                raw_sources = [getattr(doc, "metadata", {}).get("source") for doc in generated_response["context"]]
+                raw_sources = [s for s in raw_sources if s]
+            except Exception:
+                raw_sources = []
+        sources = set(raw_sources)
 
-        formatted_response = (
-            f"{generated_response['answer']} \n\n {create_sources_string(sources)}"
-        )
+        formatted_response = f"{generated_response.get('answer', '')} \n\n{create_sources_string(sources)}"
 
         st.session_state["user_prompt_history"].append(prompt)
         st.session_state["chat_answers_history"].append(formatted_response)
