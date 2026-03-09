@@ -79,23 +79,24 @@ def run_llm(
     Returns: {"answer": str, "sources": list[str], "k": int}
     """
     # ---- Keys / env setup ----
-    api_key = (openai_api_key or os.getenv("OPENAI_API_KEY") or "").strip()
+    api_key = (openai_api_key or "").strip()
     if not api_key:
-        raise ConfigError("OPENAI_API_KEY is not set.")
+        raise ConfigError("OPENAI_API_KEY must be passed as parameter to run_llm()")
 
-    if pinecone_api_key:
-        os.environ["PINECONE_API_KEY"] = pinecone_api_key
-    if not os.getenv("PINECONE_API_KEY"):
-        raise ConfigError("PINECONE_API_KEY is not set. Add it under [pinecone].api_key in Secrets.")
-
-    pc_env = pinecone_environment or os.getenv("PINECONE_ENVIRONMENT") or os.getenv("PINECONE_REGION")
-    if not pc_env:
+    if not pinecone_api_key:
         raise ConfigError(
-            "PINECONE_ENVIRONMENT (or PINECONE_REGION) is not set. "
-            'In Secrets, set [pinecone].environment = "gcp-starter" (classic) '
-            'or a serverless region like "us-east-1-aws".'
+            "Pinecone API key is required. Set it in chainlit.toml under [pinecone].api_key"
         )
-    os.environ["PINECONE_ENVIRONMENT"] = pc_env
+    
+    if not pinecone_environment:
+        raise ConfigError(
+            "Pinecone environment/region is required. "
+            'Set it in chainlit.toml under [pinecone].environment (e.g., "gcp-starter")'
+        )
+    
+    # Set environment variables for libraries that require them
+    os.environ["PINECONE_API_KEY"] = pinecone_api_key
+    os.environ["PINECONE_ENVIRONMENT"] = pinecone_environment
 
     # ---- Fast auth sanity ----
     _openai_sanity_check(api_key)

@@ -7,6 +7,7 @@ from email.mime.multipart import MIMEMultipart
 import smtplib
 import requests
 import json
+import chainlit as cl
 
 # ---------- SECRETS HELPER ----------
 def get_secret(section: str, key: str, default=None):
